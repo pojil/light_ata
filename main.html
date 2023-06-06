@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Столбы света</title>
+    <title>Lights</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
 </head>
@@ -9,10 +9,10 @@
     <div id="map" style="height: 500px;"></div>
 
     <script>
-        // Создание карты
+        // Создание карты с центром в городе Алматы
         var map = L.map("map").setView([43.238949, 76.889709], 13);
 
-        // Отключение изменения масштаба карты при двойном щелчке
+        // отмена функции зум при двойном клике
         map.doubleClickZoom.disable();
 
         // Добавление слоя Open Street Map
@@ -20,124 +20,281 @@
             maxZoom: 18
         }).addTo(map);
 
-        var objectCounter = 0;// Счетчик объектов
+        var objectCounter = 0;// object Counter
 
-        // Получаем данные из сервера
+        // Получение информации с сервера
         fetch('/objects')
           .then(response => response.json())
           .then(data => {
-            // Добавляем каждый объект на карту в соответствующем виде
+            // Добавление на карту объектов в зависимости от их типа
             data.forEach(object => {
               if (object.type === 'circle') {
                   const circle = L.circle([object.lat, object.lng], {
                       //fillOpacity: 0.5,
                       radius: 7,
                   }).addTo(map);
-                  circle.bindPopup(`<b>Столб ${object.id}</b><br>Координаты: ${object.lat.toFixed(5)}, ${object.lng.toFixed(5)}`);
+                  circle.bindPopup(`<b>Столб ${object.id} от ШУНО:${object.linkedtp}</b><br>Координаты: ${object.lat.toFixed(5)}, ${object.lng.toFixed(5)}<br><button id="deleteObject">Удалить столб</button><button id="addLine">Добавить линию</button>`);
+                  circle.on('popupopen', function() {
+                      document.getElementById('deleteObject').addEventListener('click', function() {
+                          // посылание информации на сервер методом DELETE
+                          map.removeLayer(circle);
+                          fetch(`/objects/${object.id}`, {
+                              method: 'DELETE',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ id: object.id })
+                          })
+                          .then(response => {
+                              console.log(`Столб ${object.id} успешно удален`);
+                          })
+                          .catch(error => {
+                              console.error(`Ошибка удаления столба${object.id}:`, error);
+                          });
+                      });
+                      document.getElementById('addLine').addEventListener('click', function() {
+                        const from_id = object.id;
+                        const start_lat = object.lat;
+                        const start_lng = object.lng;
+                        const linkedtp = object.linkedtp;
+                        let popupContent = 'Выберите объект соединения';
+                        let end_lat, end_lng, to_id;
+
+                        data.forEach((obj) => {
+                          if (obj.linkedtp === linkedtp && obj.id !== from_id) {
+                            if (obj.type === 'circle') {
+                              popupContent += `
+                              <label for="accept">
+                                <br><input type="checkbox" id="${obj.id}" name="accept" value="${obj.id}" data-lat="${obj.lat}" data-lng="${obj.lng}" data-id="${obj.id}"> Столб ${obj.id}
+                              </label>`;
+                            } else {
+                              popupContent += `
+                              <label for="accept">
+                                <br><input type="checkbox" id="${obj.id}" name="accept" value="${obj.id}" data-lat="${obj.lat}" data-lng="${obj.lng}" data-id="${obj.id}"> ШУНО ${obj.id}
+                              </label>`;
+                            }
+                          }
+                        });
+
+                        popupContent += `<br><button id="addSolidLine">Добавить сплошную</button><button id="addDashedLine">Добавить прерывистую</button>`;
+						
+						var myDiv = document.createElement('div');
+						myDiv.id = 'myDiv';
+						document.body.appendChild(myDiv);
+						document.getElementById('myDiv').innerHTML = popupContent;
+						
+                        circle.bindPopup(myDiv);
+
+                        document.getElementById('addSolidLine').addEventListener('click', (event) => {
+                          handleLineButtonClick('solid');
+                        });
+
+                        document.getElementById('addDashedLine').addEventListener('click', (event) => {
+                          handleLineButtonClick('dashed');
+                        });
+
+                        function handleLineButtonClick(type) {
+                          let checkboxes = document.querySelectorAll('input[name="accept"]:checked');
+                          checkboxes = Array.from(checkboxes); // Конвертация NodeList в массив
+
+                          checkboxes.forEach((checkbox) => {
+                            const end_lat = checkbox.getAttribute('data-lat');
+                            const end_lng = checkbox.getAttribute('data-lng');
+                            const to_id = checkbox.getAttribute('data-id');
+
+                            const startPoint = L.latLng(start_lat, start_lng);
+                            const endPoint = L.latLng(end_lat, end_lng);
+
+                            const lineStyle = type === 'dashed' ? { dashArray: '5, 5', color: 'green' } : { color: 'green' };
+
+                            const polyline = L.polyline([startPoint, endPoint], lineStyle).addTo(map);
+                          });
+						  
+						  // Посылание информации на сервер методом POST
+						  fetch('/lines', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({from_id: '1', to_id: to_id/*, start_lat: start_lat, start_lng: start_lng, end_lat: end_lat, end_lng: end_lng*/ })
+							})
+						  .then(response => {
+								console.log('Линия успешно добавлена');
+						  })
+						  .catch(error => {
+								console.error('Ошибка добавления линии: ', error);
+						  });
+						  
+                          alert('Lines added successfully!');
+                        }
+                        //circle.bindPopup(popupContent);
+                      });
+                  });
+
+
                   objectCounter++;
               } else if (object.type === 'square') {
-                const square = L.rectangle([[object.lat - (7 / 52000), object.lng - (7 / 28000 * Math.cos(object.lat * Math.PI / 180))], [object.lat + (7 / 52000), object.lng + (7 / 28000 * Math.cos(object.lat * Math.PI / 180))]], {
+                const rectangle = L.rectangle([[object.lat - (7 / 52000), object.lng - (7 / 28000 * Math.cos(object.lat * Math.PI / 180))], [object.lat + (7 / 52000), object.lng + (7 / 28000 * Math.cos(object.lat * Math.PI / 180))]], {
                   color: "red",
                 }).addTo(map);
-                square.bindPopup(`<b>ТП № ${object.id}</b><br>Координаты: ${object.lat.toFixed(5)}, ${object.lng.toFixed(5)}`);
+                rectangle.bindPopup(`<b>ШУНО № ${object.id}</b><br>Координаты: ${object.lat.toFixed(5)}, ${object.lng.toFixed(5)}<br><button id="deleteObject">Удалить ШУНО</button><button id="addLine">Добавить линию</button>`);
+                rectangle.on('popupopen', function() {
+                    document.getElementById('deleteObject').addEventListener('click', function() {
+                        map.removeLayer(rectangle);
+                        // Посылание информации на сервер методом DELETE
+                        fetch(`/objects/${object.id}`, {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: object.id })
+                        })
+                        .then(response => {
+                            console.log(`ШУНО ${object.id} успешно удалена`);
+                        })
+                        .catch(error => {
+                            console.error(`Ошибка удаления ШУНО ${object.id}:`, error);
+                        });
+                    });
+                });
               }
             });
           })
           .catch(error => console.error(error));
 
+        // Получение информации с сервера методом GET для линий
+        fetch('/lines')
+          .then(response => response.json())
+          .then(lines => {
 
+            // Взаимодействие со всеми имеющимися линиями
+            lines.forEach(line => {
+              const {id, from_id, to_id, linkedtp, start_lat, start_lng, end_lat, end_lng, type } = line;
 
-        // Добавление объектов на карту при двойном щелчке левой кнопки мыши
+              // приствоение точек начала и конца линии
+              const startPoint = L.latLng(start_lat, start_lng);
+              const endPoint = L.latLng(end_lat, end_lng);
+
+              // Изменение стиля линии в зависимости от типа линии в переменной type
+              const lineStyle = type === 'dashed' ? { dashArray: '5, 5', color: 'green' } : { color: 'green' };
+
+              // Создание Polyline между startPoint и endPoint со стилем type
+              const polyline = L.polyline([startPoint, endPoint], lineStyle).addTo(map);
+
+              // Создание popup с информацией о линии и возможностью ее удаления
+              const popupContent = `Линия : ${from_id} - ${to_id}<br>номер ШУНО линии: ${linkedtp}<br><button id="deleteLine">Удалить Линию</button>`;
+              polyline.bindPopup(popupContent);
+              polyline.on('popupopen', function () {
+                document.getElementById('deleteLine').addEventListener('click', function () {
+                  map.removeLayer(polyline);
+                  // Посылание информации на сервер методом DELETE
+                  fetch(`/lines/${line.id}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: line.id })
+                  })
+                    .then(response => {
+                      console.log(`Линия ${line.id} успешно удалена`);
+                    })
+                    .catch(error => {
+                      console.error(`Ошибка удаления линии ${line.id}:`, error);
+                    });
+                });
+              });
+            });
+          })
+          .catch(error => {
+            console.error('Error:', error);
+          });
+
+        // Добавление объекта на карту при двойном клике
 
         map.on('dblclick', function(event) {
-            var size = map.getSize().x * 0.005; // Размер круга или квадрата 0,5% от текущего размера карты
-            var latlng = map.mouseEventToLatLng(event.originalEvent); // Координаты клика
+            var size = map.getSize().x * 0.005; // Размер круга и квадрата 0,5% от размера карты
+            var latlng = map.mouseEventToLatLng(event.originalEvent); // Получение координат клика
 
-            var objectShapeButtons = `<button id="circle-btn">Столб</button><button id="rectangle-btn">ТП</button>`;
+            var objectShapeButtons = `<button id="circle-btn">Столб</button><button id="rectangle-btn">ШУНО</button>`;
             var popup = L.popup()
                 .setContent(objectShapeButtons)
                 .setLatLng(latlng)
                 .openOn(map);
 
-            //метод добавления столба
+            //Метод добавления кругов на карту
             document.getElementById('circle-btn').addEventListener('click', function() {
                 objectCounter++;
+                var objectNumber = prompt('Введите номер столба:');
+                var linkedtp = prompt('Введите номер связанного ШУНО:');
                 var circle = L.circle(latlng, {radius: size}).addTo(map);
-                circle.bindPopup(`<b>Столб ${objectCounter}</b><br>Координаты: ${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}<br><button id="deleteObject">Удалить объект</button>`);
-                circle.id = objectCounter;
+                circle.bindPopup(`<b>Столб ${objectNumber} от ШУНО ${linkedtp}</b><br>Координаты: ${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}<br><button id="deleteObject">Удалить столб</button><button id="addLine">Добавить линию</button>`);
+                circle.id = objectNumber;
+                circle.linkedtp = linkedtp;
 
-                // отправляем данные на сервер
+                // Посылание информации на сервер методом POST
                 fetch('/objects', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({id: circle.id, type: 'circle', lat: latlng.lat, lng: latlng.lng })
+                    body: JSON.stringify({id: circle.id, linkedtp: circle.linkedtp, type: 'circle', lat: latlng.lat, lng: latlng.lng })
                     })
                   .then(response => {
-                        console.log('Столб '+circle.id+' добавлен успешно');
+                    console.log('Столб '+circle.id+' успешно добавлен');
                   })
                   .catch(error => {
                         console.error('Ошибка добавления столба: '+circle.id, error);
                   });
 
-                  // создание popup для столба с возможностью удаления объекта
+                  // создание popup для круга с возможностью удалить его
                   circle.on('popupopen', function() {
                       document.getElementById('deleteObject').addEventListener('click', function() {
                           map.removeLayer(circle);
-                          // отправляем данные на сервер
+                          // Посылание информации на сервер методом DELETE
                           fetch(`/objects/${circle.id}`, {
                               method: 'DELETE',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ id: circle.id })
                           })
                           .then(response => {
-                              console.log(`Столб ${circle.id} удален успешно`);
+                              console.log(`Pole ${circle.id} deleted success`);
                           })
                           .catch(error => {
-                              console.error(`Ошибка удаления объекта ${circle.id}:`, error);
+                              console.error(`ERROR with deleting pole ${circle.id}:`, error);
                           });
                       });
                   });
                   map.closePopup(popup);
             });
 
-            //метод добавления ТП
+            //Добавление квадрата на карту
             document.getElementById('rectangle-btn').addEventListener('click', function() {
-                var objectNumber = prompt('Введите номер ТП:');
+                var objectNumber = prompt('Введите номер ШУНО:');
                 var mid = map.mouseEventToLatLng(event.originalEvent);
-                var sw = L.latLng([mid.lat - (size / 52000), mid.lng - (size / 28000 * Math.cos(mid.lat * Math.PI / 180))]); // Рассчитываем координаты северо-западной и юго-восточной точек прямоугольника
-                var ne = L.latLng([mid.lat + (size / 52000), mid.lng + (size / 28000 * Math.cos(mid.lat * Math.PI / 180))]); // Рассчитываем координаты северо-западной и юго-восточной точек прямоугольника
+                var sw = L.latLng([mid.lat - (size / 52000), mid.lng - (size / 28000 * Math.cos(mid.lat * Math.PI / 180))]); // Нахождение координат для SE и NW углов прямоугольника
+                var ne = L.latLng([mid.lat + (size / 52000), mid.lng + (size / 28000 * Math.cos(mid.lat * Math.PI / 180))]); // Нахождение координат для SW и NE углов прямоугольника
                 var bounds = L.latLngBounds(sw, ne);
                 var rectangle = L.rectangle(bounds, {color: 'red'}).addTo(map);
-                rectangle.bindPopup(`<b>ТП ${objectNumber}</b><br>Координаты: ${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}<br><button id="deleteObject">Удалить объект</button>`);
+                rectangle.bindPopup(`<b>ШУНО ${objectNumber}</b><br>Координаты: ${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}<br><button id="deleteObject">Удалить ШУНО</button>`);
                 rectangle.id = objectNumber;
 
-                  // отправляем данные на сервер
+                  // Посылание информации на сервер методом POST
                   fetch('/objects', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({id: rectangle.id, type: 'square', lat: latlng.lat, lng: latlng.lng })
                     })
                   .then(response => {
-                        console.log('ТП '+rectangle.id+' добавлено успешно');
+                        console.log('ШУНО '+rectangle.id+' успешно добавлена');
                   })
                   .catch(error => {
-                        console.error('Ошибка добавления ТП: '+rectangle.id, error);
+                        console.error('Ошибка добавления ШУНО: '+rectangle.id, error);
                   });
 
                   rectangle.on('popupopen', function() {
                       document.getElementById('deleteObject').addEventListener('click', function() {
                           map.removeLayer(rectangle);
-                          // отправляем данные на сервер
+                          // Посылание информации на сервер методом DELETE
                           fetch(`/objects/${rectangle.id}`, {
                               method: 'DELETE',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ id: rectangle.id })
                           })
                           .then(response => {
-                              console.log(`ТП ${rectangle.id} удален успешно`);
+                              console.log(`ШУНО ${rectangle.id} успешно удалена`);
                           })
                           .catch(error => {
-                              console.error(`Ошибка удаления объекта ${rectangle.id}:`, error);
+                              console.error(`Ошибка удаления ШУНО ${rectangle.id}:`, error);
                           });
                       });
                   });
