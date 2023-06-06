@@ -75,13 +75,13 @@
                         });
 
                         popupContent += `<br><button id="addSolidLine">Добавить сплошную</button><button id="addDashedLine">Добавить прерывистую</button>`;
-						
-						var myDiv = document.createElement('div');
+
+						var myDiv = document.createElement('div');//создание динамической переменной
 						myDiv.id = 'myDiv';
 						document.body.appendChild(myDiv);
 						document.getElementById('myDiv').innerHTML = popupContent;
-						
-                        circle.bindPopup(myDiv);
+
+                        circle.bindPopup(myDiv);//работа с динамической переменной
 
                         document.getElementById('addSolidLine').addEventListener('click', (event) => {
                           handleLineButtonClick('solid');
@@ -106,26 +106,26 @@
                             const lineStyle = type === 'dashed' ? { dashArray: '5, 5', color: 'green' } : { color: 'green' };
 
                             const polyline = L.polyline([startPoint, endPoint], lineStyle).addTo(map);
+
+
+                            // Посылание информации на сервер методом POST
+                            fetch('/lines', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({from_id: from_id, to_id: to_id, linkedtp: linkedtp, type: type, start_lat: start_lat, start_lng: start_lng, end_lat: end_lat, end_lng: end_lng })
+                            })
+                            .then(response => {
+                              console.log('Линия успешно добавлена');
+                            })
+                            .catch(error => {
+                              console.error('Ошибка добавления линии: ', error);
+                            });
                           });
-						  
-						  // Посылание информации на сервер методом POST
-						  fetch('/lines', {
-							method: 'POST',
-							headers: { 'Content-Type': 'application/json' },
-							body: JSON.stringify({from_id: '1', to_id: to_id/*, start_lat: start_lat, start_lng: start_lng, end_lat: end_lat, end_lng: end_lng*/ })
-							})
-						  .then(response => {
-								console.log('Линия успешно добавлена');
-						  })
-						  .catch(error => {
-								console.error('Ошибка добавления линии: ', error);
-						  });
-						  
-                          alert('Lines added successfully!');
-                        }
-                        //circle.bindPopup(popupContent);
-                      });
-                  });
+                            alert('Lines added successfully!');
+                          }
+                          //circle.bindPopup(popupContent);
+                        });
+                    });
 
 
                   objectCounter++;
